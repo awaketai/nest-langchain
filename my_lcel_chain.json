@@ -1,0 +1,101 @@
+{
+  "lc": 1,
+  "type": "constructor",
+  "id": [
+    "langchain",
+    "schema",
+    "runnable",
+    "RunnableSequence"
+  ],
+  "kwargs": {
+    "first": {
+      "lc": 1,
+      "type": "constructor",
+      "id": [
+        "langchain",
+        "prompts",
+        "chat",
+        "ChatPromptTemplate"
+      ],
+      "kwargs": {
+        "input_variables": [
+          "topic"
+        ],
+        "messages": [
+          {
+            "lc": 1,
+            "type": "constructor",
+            "id": [
+              "langchain",
+              "prompts",
+              "chat",
+              "HumanMessagePromptTemplate"
+            ],
+            "kwargs": {
+              "prompt": {
+                "lc": 1,
+                "type": "constructor",
+                "id": [
+                  "langchain",
+                  "prompts",
+                  "prompt",
+                  "PromptTemplate"
+                ],
+                "kwargs": {
+                  "input_variables": [
+                    "topic"
+                  ],
+                  "template": "\u5199\u4e00\u9996\u5173\u4e8e{topic}\u7684\u8bd7",
+                  "template_format": "f-string"
+                },
+                "name": "PromptTemplate"
+              }
+            }
+          }
+        ]
+      },
+      "name": "ChatPromptTemplate"
+    },
+    "middle": [
+      {
+        "lc": 1,
+        "type": "constructor",
+        "id": [
+          "langchain",
+          "chat_models",
+          "anthropic",
+          "ChatAnthropic"
+        ],
+        "kwargs": {
+          "model": "claude-sonnet-4-20250514",
+          "max_tokens": 1024,
+          "temperature": 0.1,
+          "max_retries": 2,
+          "anthropic_api_url": "https://chat.cloudapi.vip",
+          "anthropic_api_key": {
+            "lc": 1,
+            "type": "secret",
+            "id": [
+              "ANTHROPIC_API_KEY"
+            ]
+          },
+          "stream_usage": true
+        },
+        "name": "ChatAnthropic"
+      }
+    ],
+    "last": {
+      "lc": 1,
+      "type": "constructor",
+      "id": [
+        "langchain",
+        "schema",
+        "output_parser",
+        "StrOutputParser"
+      ],
+      "kwargs": {},
+      "name": "StrOutputParser"
+    }
+  },
+  "name": "RunnableSequence"
+}
