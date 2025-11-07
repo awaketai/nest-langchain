@@ -30,9 +30,17 @@
 
 
 # 使用TextLoader读取本地文本文件
+import asyncio
 import os
 
-from langchain_community.document_loaders import TextLoader
+from langchain_community.document_loaders import (
+    PyPDFLoader,
+    TextLoader,
+    WebBaseLoader,
+    pdf,
+)
+from langchain_core.document_loaders import BaseLoader
+from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
@@ -40,32 +48,6 @@ from llm_client_asher.llm_config import Config
 from pydantic import SecretStr
 
 cfg = Config()
-
-
-def text_loader():
-    """
-    使用TextLoader读取本地文本文件
-    """
-    file_path = os.path.join(os.path.dirname(__file__), "example.txt")
-    if not os.path.exists(file_path):
-        raise FileNotFoundError(f"File not found: {file_path}")
-
-    print(f"----1.加载文件:{file_path} \n")
-    loader = TextLoader(file_path, encoding="utf-8")
-    docs = loader.load()
-    print(f"----2.加载完成，文档数量:{len(docs)}")
-    if docs:
-        doc = docs[0]
-        from pprint import pprint
-
-        print("文档元数据\n")
-        pprint(doc.metadata)
-
-        print("\n文档内容\n")
-        print(doc.page_content)
-    if not docs:
-        raise ValueError("No document loaded")
-    interact_with_llm(docs[0])
 
 
 def interact_with_llm(doc):
@@ -114,5 +96,58 @@ def interact_with_llm(doc):
     print(f"----4.回答问题:{answer.strip()}\n")
 
 
+def load_file_and_use_llm(loader: BaseLoader):
+    docs = loader.load()
+    if not docs:
+        raise ValueError("No document loaded")
+
+    doc = docs[0]
+    from pprint import pprint
+
+    print("文档元数据\n")
+    pprint(doc.metadata)
+
+    print("\n文档内容\n")
+    print(doc.page_content)
+    interact_with_llm(doc)
+
+
+def get_file_path(file_name: str) -> str:
+    return os.path.join(os.path.dirname(__file__), file_name)
+
+
+def text_loader():
+    """
+    使用TextLoader读取本地文本文件
+    """
+    file_path = get_file_path("./static/example.txt")
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"File not found: {file_path}")
+
+    print(f"----1.加载文件:{file_path} \n")
+    loader = TextLoader(file_path, encoding="utf-8")
+    load_file_and_use_llm(loader)
+
+
+def pdf_loader():
+    file_path = get_file_path("./static/example.pdf")
+    if not os.path.exists(file_path):
+        raise ValueError(f"File not found: {file_path}")
+    loader = PyPDFLoader(file_path)
+    load_file_and_use_llm(loader)
+
+
+async def web_loader():
+    url = "https://python.langchain.com/docs/how_to/chatbots_memory/"
+    loader = WebBaseLoader(web_paths=[url])
+    docs = []
+    async for doc in loader.alazy_load():
+        docs.append(doc)
+
+    interact_with_llm(docs[0])
+
+
 if __name__ == "__main__":
-    text_loader()
+    # text_loader()
+    # pdf_loader()
+    asyncio.run(web_loader())
