@@ -16,3 +16,4 @@ protobuf>=4.25.3,<5.0.0
 requests>=2.32.2
 typing-extensions>=4.12.1
 pydantic>=2.5.0,<2.12.0
+numpy>=1.20.0,<2.0
