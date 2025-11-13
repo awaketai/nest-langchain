@@ -5,7 +5,7 @@ langchain-community==0.3.17
 langchain-text-splitters==0.3.8
 langchain-openai>=0.2.0,<=0.3.28
 langchain-deepseek==0.1.4
-langchain-huggingface==0.3.17
+langchain-huggingface==0.3.1
 
 # LangChain 集成
 langchain-anthropic==0.3.7
