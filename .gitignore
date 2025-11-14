@@ -2,3 +2,5 @@
 .zed
 .vscode
 venv
+record_manager.db
+faiss_index
