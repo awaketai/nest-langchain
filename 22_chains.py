@@ -20,6 +20,10 @@ from pydantic import SecretStr
 
 cfg = Config()
 
+# TODO:待补充：
+# 1.如何构建一个具有 记忆 (Memory) 功能的对话链。通过手动管理聊天历史，该链能够在多轮对话中记住上下文。
+# 2.example_1_basic_agent.py & example_2_agent_with_memory.py: 这两个文件介绍了 **代理 (Agent)**，它是一种更高级、更动态的链。与固定步骤的链不同，代理能够使用大语言模型进行“思考”，并自主决定调用哪个工具（如搜索引擎）来完成任务。example_2 在 example_1 的基础上增加了记忆功能。
+
 
 def simple_lcel_chain():
     """
