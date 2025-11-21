@@ -30,3 +30,52 @@
 # 3.增强LLM能力：代理将LLM的语言理解和生成能力与外部工具的强大功能结合起来，极大的扩展了LLM的应用范围
 #
 # TODO:补充示例
+
+from langchain.agents import AgentType, Tool, initialize_agent
+from langchain_openai import ChatOpenAI
+from llm_client_asher.llm_config import Config
+from pydantic import SecretStr
+
+cfg = Config()
+
+
+def calculator_tool(query: str) -> str:
+    """简单的计算工具"""
+    try:
+        return str(eval(query))
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+
+def example1():
+    # 包装工具
+    calculator = Tool(
+        name="Calculator",
+        func=calculator_tool,
+        description="执行简单数据表达式计算",
+    )
+    if cfg.OPENAI_KEY_V4 is None:
+        raise ValueError("OPENAI_KEY_V4 is not set")
+    llm = ChatOpenAI(
+        base_url=cfg.OPENAI_BASE_URL,
+        api_key=SecretStr(cfg.OPENAI_KEY_V4),
+        model="gpt-4-turbo",
+    )
+    # 初始化一个带有思考和行动的ReACT代理
+    agent = initialize_agent(
+        tools=[calculator],
+        llm=llm,
+        agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
+        verbose=True,
+        handle_parsing_errors=True,
+    )
+
+    question = "请帮我计算一下 12 * (3 + 5)"
+
+    # 运行agent
+    response = agent.invoke({"input": question})
+    print(response)
+
+
+if __name__ == "__main__":
+    example1()
