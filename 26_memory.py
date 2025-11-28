@@ -77,3 +77,174 @@
 # 消息类型：强调了HUmanMessage和AIMessage在构建对话历史中的作用
 # 基础构建块：说明了ChatMessageHistory是所有更高级记忆类型的基础
 #
+
+from typing import Any, Dict, List
+
+from langchain_community.chat_message_histories import ChatMessageHistory
+from langchain_core.chat_history import BaseChatMessageHistory
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+
+
+class SimpleBufferMemory:
+    """
+    简单的缓冲区记忆类，基于ChatMessageHistory实现
+    模拟ConversationBufferMemory的核心功能
+    """
+
+    def __init__(
+        self,
+        chat_memory: BaseChatMessageHistory = None,
+        return_messages: bool = False,
+        memory_key: str = "history",
+        input_key: str = "input",
+        output_key: str = "output",
+        human_prefix: str = "Human",
+        ai_prefix: str = "AI",
+    ) -> None:
+        """
+        初始化SimpleBufferMemory
+        Args:
+            chat_memory: 聊天消息历史对象，默认使用 ChatMessageHistory
+            return_messages: 是否返回消息对象列表，False 则返回字符串
+            memory_key: 存储历史的键
+            input_key: 存储用户输入的键
+            output_key: 存储AI输出的键
+            human_prefix: 用户消息的前缀
+            ai_prefix: AI消息的前缀
+        """
+        self.chat_memory = chat_memory or ChatMessageHistory()
+        self.return_messages = return_messages
+        self.memory_key = memory_key
+        self.input_key = input_key
+        self.output_key = output_key
+        self.human_prefix = human_prefix
+        self.ai_prefix = ai_prefix
+
+    def save_context(self, inputs: Dict[str, Any], outputs: Dict[str, Any]) -> None:
+        """
+        保存对话上下文到记忆中
+        Args:
+            inputs: 输入字典，包含用户输入
+            outputs: 输出字典，包含 AI 响应
+        """
+        # 从输入中提取用户消息
+        input_str = inputs.get(self.input_key, "")
+        # 从输出中提取AI相应
+        output_str = outputs.get(self.output_key, "")
+        # 添加到聊天历史
+        self.chat_memory.add_user_message(input_str)
+        self.chat_memory.add_ai_message(output_str)
+
+    def load_memory_variables(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        加载记忆变量
+        Args:
+            inputs: 输入字典(可选)
+        Returns:
+            Dict[str,Any]: 记忆变量字典
+        """
+        if self.return_messages:
+            # 返回消息对象列表
+            return {self.memory_key: self.chat_memory.messages}
+        else:
+            # 返回格式化的字符串
+            return {self.memory_key: self._get_buffer_string()}
+
+    def _get_buffer_string(self) -> str:
+        """
+        将消息历史转化为格式化字符串
+        """
+        messages = self.chat_memory.messages
+        string_messages = []
+        for msg in messages:
+            if isinstance(msg, HumanMessage):
+                prefix = self.human_prefix
+            elif isinstance(msg, AIMessage):
+                prefix = self.ai_prefix
+            else:
+                prefix = msg.__class__.__name__
+
+            string_messages.append(f"{prefix}: {msg.content}")
+
+        return "\n".join(string_messages)
+
+    def clear(self):
+        """
+        清空记忆
+        """
+        self.chat_memory.clear()
+
+    @property
+    def messages(self) -> List[BaseMessage]:
+        """
+        获取所有消息
+        """
+        return self.chat_memory.messages
+
+
+def simple_buffer_memory():
+    print("=== SimpleBufferMemory 示例 ===\n")
+
+    # 1. 基本使用 - 返回字符串格式
+    print("1. 基本使用（字符串格式）:")
+    memory = SimpleBufferMemory()
+
+    # 保存对话上下文
+    memory.save_context(
+        {"input": "你好，我叫小明"}, {"output": "你好小明！很高兴认识你。"}
+    )
+
+    memory.save_context(
+        {"input": "你能帮我写代码吗？"},
+        {"output": "当然可以！我很乐意帮你写代码。你想写什么样的代码？"},
+    )
+
+    memory.save_context(
+        {"input": "帮我写一个 Python 的 for 循环"},
+        {
+            "output": "好的，这是一个简单的 for 循环示例：\nfor i in range(10):\n    print(i)"
+        },
+    )
+
+    # 加载记忆
+    variables = memory.load_memory_variables({})
+    print(variables[memory.memory_key])
+    print()
+
+    # 2. 返回消息对象列表
+    print("\n2. 返回消息对象列表:")
+    memory_with_messages = SimpleBufferMemory(return_messages=True)
+
+    memory_with_messages.save_context(
+        {"input": "什么是机器学习？"},
+        {"output": "机器学习是人工智能的一个分支，它让计算机能够从数据中学习。"},
+    )
+
+    variables = memory_with_messages.load_memory_variables({})
+    messages = variables[memory_with_messages.memory_key]
+
+    for msg in messages:
+        print(f"{msg.__class__.__name__}: {msg.content}")
+    print()
+
+    # 3. 自定义前缀
+    print("\n3. 自定义前缀:")
+    custom_memory = SimpleBufferMemory(human_prefix="用户", ai_prefix="助手")
+
+    custom_memory.save_context(
+        {"input": "今天天气怎么样？"}, {"output": "抱歉，我无法获取实时天气信息。"}
+    )
+
+    variables = custom_memory.load_memory_variables({})
+    print(variables[custom_memory.memory_key])
+    print()
+
+    # 4. 清空记忆
+    print("\n4. 清空记忆:")
+    print(f"清空前消息数量: {len(memory.messages)}")
+    memory.clear()
+    print(f"清空后消息数量: {len(memory.messages)}")
+
+
+if __name__ == "__main__":
+    simple_buffer_memory()
