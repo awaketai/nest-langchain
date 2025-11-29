@@ -78,11 +78,21 @@
 # 基础构建块：说明了ChatMessageHistory是所有更高级记忆类型的基础
 #
 
+
+import os
+from ctypes import memmove
 from typing import Any, Dict, List
 
+import dotenv
 from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.chat_history import BaseChatMessageHistory
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from pydantic import SecretStr
+
+dotenv.load_dotenv()
+
+OPEN_API_URL = os.environ.get("OPEN_API_URL")
+OPEN_API_KEY = os.environ.get("OPEN_API_KEY")
 
 
 class SimpleBufferMemory:
@@ -181,6 +191,22 @@ class SimpleBufferMemory:
         """
         return self.chat_memory.messages
 
+    def format_messages(self) -> str:
+        """
+        将消息格式化为字符串
+
+        Returns:
+            格式化的对话历史字符串
+        """
+        messages = self.messages
+        formatted = []
+        for msg in messages:
+            if isinstance(msg, HumanMessage):
+                formatted.append(f"Human: {msg.content}")
+            elif isinstance(msg, AIMessage):
+                formatted.append(f"AI: {msg.content}")
+        return "\n".join(formatted)
+
 
 def simple_buffer_memory():
     print("=== SimpleBufferMemory 示例 ===\n")
@@ -246,5 +272,77 @@ def simple_buffer_memory():
     print(f"清空后消息数量: {len(memory.messages)}")
 
 
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.runnables import RunnablePassthrough
+from langchain_openai import ChatOpenAI
+
+
+def create_conversation_chain(llm, memory: SimpleBufferMemory):
+    """
+    创建带记忆的对话链
+    Args:
+        llm:大语言模型
+        memory: SimpleBufferMemory
+    """
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", "你是一个友好的AI助手，请根据对话历史回答用户的问题"),
+            MessagesPlaceholder(variable_name="history"),
+            ("human", "{input}"),
+        ]
+    )
+    # 创建
+    chain = prompt | llm
+
+    return chain
+
+
+def run_conversation(llm, memory: SimpleBufferMemory, user_input: str) -> str:
+    chain = create_conversation_chain(llm, memory)
+    # 加载历史消息
+    memory_vars = memory.load_memory_variables({})
+    # 准备输入
+    chain_input = {"history": memory_vars["history"], "input": user_input}
+    # 调用模型
+    response = chain.invoke(chain_input)
+    # 保存上下文
+    memory.save_context({"input": user_input}, {"output": response.content})
+
+    # 返回模型输出
+    return response.content
+
+
+def main():
+    if OPEN_API_KEY is None:
+        raise ValueError("OPENAI_KEY_V4 is not set")
+    llm = ChatOpenAI(
+        base_url=OPEN_API_URL,
+        api_key=SecretStr(OPEN_API_KEY),
+        model="gpt-4",
+    )
+    # 创建新的记忆实例
+    chat_history_2 = ChatMessageHistory()
+    memory_2 = SimpleBufferMemory(chat_memory=chat_history_2, return_messages=True)
+
+    # 进行对话
+    response_1 = run_conversation(llm, memory_2, "你好，我叫张三")
+    print(f"用户: 你好，我叫张三")
+    print(f"AI: {response_1}\n")
+
+    response_2 = run_conversation(llm, memory_2, "我喜欢打篮球")
+    print(f"用户: 我喜欢打篮球")
+    print(f"AI: {response_2}\n")
+
+    response_3 = run_conversation(llm, memory_2, "你还记得我的名字和爱好吗？")
+    print(f"用户: 你还记得我的名字和爱好吗？")
+    print(f"AI: {response_3}\n")
+
+    # 显示历史
+    print("=" * 60)
+    print("对话历史：")
+    print("=" * 60)
+    print(memory_2.format_messages)
+
+
 if __name__ == "__main__":
-    simple_buffer_memory()
+    main()
