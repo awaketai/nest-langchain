@@ -80,13 +80,15 @@
 
 
 import os
-from ctypes import memmove
 from typing import Any, Dict, List
 
 import dotenv
 from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.chat_history import BaseChatMessageHistory
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.runnables import RunnablePassthrough
+from langchain_openai import ChatOpenAI
 from pydantic import SecretStr
 
 dotenv.load_dotenv()
@@ -270,11 +272,6 @@ def simple_buffer_memory():
     print(f"清空前消息数量: {len(memory.messages)}")
     memory.clear()
     print(f"清空后消息数量: {len(memory.messages)}")
-
-
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.runnables import RunnablePassthrough
-from langchain_openai import ChatOpenAI
 
 
 def create_conversation_chain(llm, memory: SimpleBufferMemory):
