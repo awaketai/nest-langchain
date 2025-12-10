@@ -6,3 +6,4 @@ record_manager.db
 faiss_index
 company.db
 .env
+*.log
