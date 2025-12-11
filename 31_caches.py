@@ -4,7 +4,7 @@
 # 2.缓存可以减少LLM的调用，从而加快应用响应速度
 #
 # https://lagnchain.readthedocs.io/en/stable/modules/memory/types/buffer_window.html
-# 缓存类型
+# 缓存类型(应该是已被废弃)
 # 1.ConversationBufferMemory:
 # This memory allows for storing of messages and then extracts the messages in a variable.
 #
@@ -24,3 +24,58 @@
 # 6.VectorStore-Backed Memory:stores memories in a VectorDB and queries the top-K most “salient” docs every time it is called.
 # This differs from most of the other Memory classes in that it doesn’t explicitly track the order of interactions.
 # In this case, the “docs” are previous conversation snippets. This can be useful to refer to relevant pieces of information that the AI was told earlier in the conversation.
+
+import os
+
+from dotenv import load_dotenv
+from langchain_core.chat_history import InMemoryChatMessageHistory
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.runnables.history import RunnableWithMessageHistory
+from langchain_openai import ChatOpenAI
+from pydantic import SecretStr
+
+load_dotenv()
+
+OPEN_API_URL = os.environ.get("OPEN_API_URL")
+OPEN_API_KEY = os.environ.get("OPEN_API_KEY")
+
+# 1.缓冲记忆
+#
+if OPEN_API_KEY is None:
+    raise ValueError("OPENAI_KEY_V4 is not set")
+llm = ChatOpenAI(
+    base_url=OPEN_API_URL,
+    api_key=SecretStr(OPEN_API_KEY),
+)
+
+# 初始化聊天历史
+chat_history = InMemoryChatMessageHistory()
+# 创建提示模板
+prompt = ChatPromptTemplate.from_messages(
+    [
+        ("system", "You are a helpful assistant."),
+        ("human", "{input}"),
+        MessagesPlaceholder(variable_name="chat_history"),
+    ]
+)
+
+# 创建链
+chain = prompt | llm
+# 添加消息历史功能
+chain_with_history = RunnableWithMessageHistory(
+    chain,
+    lambda session_id: chat_history,
+    input_messages_key="input",
+    history_messages_key="chat_history",
+)
+
+response = chain_with_history.invoke(
+    {"input": "你好，我叫张三"}, config={"configurable": {"session_id": "user123"}}
+)
+print(response.content)
+
+# 继续对话
+response = chain_with_history.invoke(
+    {"input": "我刚才说我叫什么"}, config={"configurable": {"session_id": "user123"}}
+)
+print(response.content)
