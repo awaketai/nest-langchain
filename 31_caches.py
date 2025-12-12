@@ -28,6 +28,14 @@
 import os
 
 from dotenv import load_dotenv
+from langchain_community.agent_toolkits import (
+    JsonToolkit,
+    OpenAPIToolkit,
+    create_json_agent,
+    create_openapi_agent,
+)
+from langchain_community.tools.json.tool import JsonSpec
+from langchain_community.utilities import TextRequestsWrapper
 from langchain_core.chat_history import InMemoryChatMessageHistory
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables.history import RunnableWithMessageHistory
@@ -48,34 +56,67 @@ llm = ChatOpenAI(
     api_key=SecretStr(OPEN_API_KEY),
 )
 
-# 初始化聊天历史
-chat_history = InMemoryChatMessageHistory()
-# 创建提示模板
-prompt = ChatPromptTemplate.from_messages(
-    [
-        ("system", "You are a helpful assistant."),
-        ("human", "{input}"),
-        MessagesPlaceholder(variable_name="chat_history"),
-    ]
-)
 
-# 创建链
-chain = prompt | llm
-# 添加消息历史功能
-chain_with_history = RunnableWithMessageHistory(
-    chain,
-    lambda session_id: chat_history,
-    input_messages_key="input",
-    history_messages_key="chat_history",
-)
+def memory_old():
+    # 初始化聊天历史
+    chat_history = InMemoryChatMessageHistory()
+    # 创建提示模板
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", "You are a helpful assistant."),
+            ("human", "{input}"),
+            MessagesPlaceholder(variable_name="chat_history"),
+        ]
+    )
 
-response = chain_with_history.invoke(
-    {"input": "你好，我叫张三"}, config={"configurable": {"session_id": "user123"}}
-)
-print(response.content)
+    # 创建链
+    chain = prompt | llm
+    # 添加消息历史功能
+    chain_with_history = RunnableWithMessageHistory(
+        chain,
+        lambda session_id: chat_history,
+        input_messages_key="input",
+        history_messages_key="chat_history",
+    )
 
-# 继续对话
-response = chain_with_history.invoke(
-    {"input": "我刚才说我叫什么"}, config={"configurable": {"session_id": "user123"}}
-)
-print(response.content)
+    response = chain_with_history.invoke(
+        {"input": "你好，我叫张三"}, config={"configurable": {"session_id": "user123"}}
+    )
+    print(response.content)
+
+    # 继续对话
+    response = chain_with_history.invoke(
+        {"input": "我刚才说我叫什么"},
+        config={"configurable": {"session_id": "user123"}},
+    )
+    print(response.content)
+
+
+# 新版本的memory
+# https://docs.langchain.com/oss/python/langchain/short-term-memory
+#
+
+
+def memory_new():
+    def get_user_info():
+        return {"name": "张三", "age": 25}
+
+    json_spec = JsonToolkit(spec=JsonSpec(dict_=get_user_info()))
+    toolkit = OpenAPIToolkit(
+        json_agent=create_json_agent(llm=llm, toolkit=json_spec, verbose=True),
+        requests_wrapper=TextRequestsWrapper(),
+        allow_dangerous_requests=True,
+    )
+
+    agent = create_openapi_agent(
+        llm=llm,
+        toolkit=toolkit,
+        verbose=True,
+    )
+
+    response = agent.invoke({"input": "你好，我叫张三"})
+    print(response)
+
+
+if __name__ == "__main__":
+    memory_new()
