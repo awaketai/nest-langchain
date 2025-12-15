@@ -16,7 +16,13 @@
 # 1.函数的名称(search)会自动成为工具的name
 # 2.函数的docstring会自动成为工具的description
 # 3.函数的类型会自动用于生成工具的args_schema
-from langchain.tools import tool
+import os
+
+from dotenv import load_dotenv
+from langchain.agents import AgentType, Tool, initialize_agent
+from langchain.tools import StructuredTool, tool
+from langchain_openai import ChatOpenAI
+from pydantic import BaseModel, Field, SecretStr
 
 
 @tool
@@ -29,8 +35,6 @@ def search(query: str) -> str:
 # 2.使用StructuredTool(用于更复杂的参数)
 # 当工具需要更复杂的、结构化的输入时，可以使用StructuredTool并结合Pydantic模型来定义args_schema
 #
-from langchain.tools import StructuredTool
-from pydantic import BaseModel, Field
 
 
 class SearchInput(BaseModel):
@@ -62,3 +66,49 @@ calculator_tool = StructuredTool.from_function(
 # PythonREPLTool:执行Python代码
 # LLMMathChain:进行数学计算
 # WikipediaQueryRun:查询维基百科
+#
+#
+load_dotenv()
+
+OPEN_API_URL = os.environ.get("OPEN_API_URL")
+OPEN_API_KEY = os.environ.get("OPEN_API_KEY")
+
+# 1.缓冲记忆
+#
+if OPEN_API_KEY is None:
+    raise ValueError("OPENAI_KEY_V4 is not set")
+llm = ChatOpenAI(
+    base_url=OPEN_API_URL,
+    api_key=SecretStr(OPEN_API_KEY),
+)
+
+
+def tavily_search(query: str) -> str:
+    """Search the web for the given query."""
+    return f"Search results for {query}"
+
+
+def main():
+    # 把这个函数包装成 LangChain 的 Tool 对象
+    tavily_search_tool = Tool(
+        name="TavilySearchResults",
+        func=tavily_search,
+        description="用来执行互联网搜索并返回结果",
+    )
+
+    agent = initialize_agent(
+        tools=[tavily_search_tool],
+        llm=llm,
+        agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
+        verbose=True,
+    )
+
+    # 使用agent执行搜索任务
+    query = "LangChain 如何使用自定义工具？"
+    result = agent.invoke({"input": query})
+
+    print(result)
+
+
+if __name__ == "__main__":
+    main()
