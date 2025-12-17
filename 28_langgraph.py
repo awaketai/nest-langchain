@@ -40,17 +40,29 @@
 #
 
 import os
+from mimetypes import inited
 from typing import TypedDict
 
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph
 from pydantic import SecretStr
+from sqlalchemy.sql.operators import mul
 
 load_dotenv()
 
 OPEN_API_URL = os.environ.get("OPEN_API_URL")
 OPEN_API_KEY = os.environ.get("OPEN_API_KEY")
+
+
+if OPEN_API_KEY is None:
+    raise ValueError("OPENAI_KEY_V4 is not set")
+llm = ChatOpenAI(
+    base_url=OPEN_API_URL,
+    api_key=SecretStr(OPEN_API_KEY),
+    model="gpt-3.5-turbo",
+    temperature=0,
+)
 
 
 # 定义状态类型
@@ -64,14 +76,7 @@ def llm_node(state: GraphState) -> GraphState:
     """
     llm调用节点
     """
-    if OPEN_API_KEY is None:
-        raise ValueError("OPENAI_KEY_V4 is not set")
-    llm = ChatOpenAI(
-        base_url=OPEN_API_URL,
-        api_key=SecretStr(OPEN_API_KEY),
-        model="gpt-3.5-turbo",
-        temperature=0,
-    )
+
     response = llm.invoke(state["message"])
     return {
         **state,
@@ -129,5 +134,69 @@ def main():
     print("\n处理结果:", result["processed_result"])
 
 
+# 定义状态类型，包含输入，两个代理的输出
+class MultiAgentState(TypedDict):
+    user_input: str
+    agent1_summary: str
+    agent2_advice: str
+
+
+def agent1_node(state: MultiAgentState) -> MultiAgentState:
+    """
+    第一个代理：负责总结用户输入内容
+    """
+    prompt = f"请用一句简短的话总结以下内容: {state['user_input']}"
+    response = llm.invoke(prompt)
+    return {
+        **state,
+        "agent1_summary": response.content,
+    }
+
+
+def agent2_node(state: MultiAgentState) -> MultiAgentState:
+    """
+    第二个代理，根据第一个代理的总结生成建议
+    """
+    prompt = f"基于这段总结，给出改进建议: {state['agent1_summary']}"
+    response = llm.invoke(prompt)
+    return {
+        **state,
+        "agent2_advice": response.content,
+    }
+
+
+def multi_agent():
+    graph = StateGraph(MultiAgentState)
+
+    # 添加两个代理节点
+    graph.add_node("agent1", agent1_node)
+    graph.add_node("agent2", agent2_node)
+
+    # 入口是agent1开始处理
+    graph.set_entry_point("agent1")
+
+    # 定义数据流，agent1的输出作为agetn2的输入
+    graph.add_edge("agent1", "agent2")
+    graph.add_edge("agent2", END)
+
+    # 编译图
+    app = graph.compile()
+    return app
+
+
+def multi_agent_main():
+    app = multi_agent()
+    initial_state = {
+        "user_input": "LangGraph 是一个非常好用的库，可以帮助开发者构建复杂的有状态多代理工作流。",
+        "agent1_summary": "",
+        "agent2_advice": "",
+    }
+    result = app.invoke(initial_state)
+    print("用户输入:", initial_state["user_input"])
+    print("代理1总结:", result["agent1_summary"])
+    print("代理2建议:", result["agent2_advice"])
+
+
 if __name__ == "__main__":
-    main()
+    # main()
+    multi_agent_main()
