@@ -8,3 +8,4 @@ company.db
 .env
 *.log
 *.txt
+.venv
