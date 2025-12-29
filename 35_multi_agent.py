@@ -7,9 +7,20 @@
 # agent 可按需调用
 #
 #
-from typing import TypedDict
+import operator
+import os
+from typing import Annotated, Sequence, TypedDict
 
+from dotenv import load_dotenv
 from langchain.tools import tool
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_openai import ChatOpenAI
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.graph import END, StateGraph
+from langgraph.prebuilt import ToolNode
+from pydantic import SecretStr
+from typing_extensions import TypedDict
 
 
 class Skill(TypedDict):
@@ -169,3 +180,147 @@ def load_skills(skill_name: str) -> str:
 
 
 # build skill middleware
+# 由于当前版本(0.3.x)没有 middleware 和 create_agent API
+# 我们使用 LangGraph + 自定义 prompt 的方式实现相同功能
+
+
+# 定义 Agent State
+class AgentState(TypedDict):
+    messages: Annotated[Sequence[BaseMessage], operator.add]
+
+
+def create_skill_aware_agent(model, tools, system_prompt: str):
+    """创建一个支持 skill 的 agent
+
+    Args:
+        model: LLM 模型
+        tools: 工具列表（包括 load_skills 工具）
+        system_prompt: 基础系统提示
+
+    Returns:
+        编译后的 LangGraph agent
+    """
+
+    # 构建 skills 列表文本
+    skills_list = []
+    for skill in SKILLS:
+        skills_list.append(f"- **{skill['name']}**: {skill['description']}")
+    skills_prompt = "\n".join(skills_list)
+
+    # 组合完整的系统提示
+    full_system_prompt = (
+        f"{system_prompt}\n\n"
+        f"## Available Skills\n\n{skills_prompt}\n\n"
+        "Use the load_skills tool when you need detailed information "
+        "about handling a specific type of request."
+    )
+
+    # 绑定工具到模型
+    model_with_tools = model.bind_tools(tools)
+
+    # 定义 agent 节点
+    def call_model(state: AgentState):
+        messages = state["messages"]
+
+        # 在第一条消息前添加系统提示
+        if not any(isinstance(m, SystemMessage) for m in messages):
+            messages = [SystemMessage(content=full_system_prompt)] + list(messages)
+
+        response = model_with_tools.invoke(messages)
+        return {"messages": [response]}
+
+    # 定义路由函数
+    def should_continue(state: AgentState):
+        messages = state["messages"]
+        last_message = messages[-1]
+
+        # 如果没有工具调用，结束
+        if not hasattr(last_message, "tool_calls") or not last_message.tool_calls:
+            return "end"
+        return "continue"
+
+    # 构建图
+    workflow = StateGraph(AgentState)
+
+    # 添加节点
+    workflow.add_node("agent", call_model)
+    workflow.add_node("tools", ToolNode(tools))
+
+    # 设置入口点
+    workflow.set_entry_point("agent")
+
+    # 添加条件边
+    workflow.add_conditional_edges(
+        "agent",
+        should_continue,
+        {
+            "continue": "tools",
+            "end": END,
+        },
+    )
+
+    # 工具执行后回到 agent
+    workflow.add_edge("tools", "agent")
+
+    # 编译图
+    return workflow.compile(checkpointer=MemorySaver())
+
+
+load_dotenv()
+
+OPEN_API_URL = os.environ.get("OPEN_API_URL")
+OPEN_API_KEY = os.environ.get("OPEN_API_KEY")
+# 使用示例
+if __name__ == "__main__":
+    # 选择你的模型（根据你的环境调整）
+    # from langchain_openai import ChatOpenAI
+    # model = ChatOpenAI(model="gpt-4", temperature=0)
+
+    if OPEN_API_KEY is None:
+        raise ValueError("OPENAI_KEY_V4 is not set")
+    model = ChatOpenAI(
+        base_url=OPEN_API_URL,
+        api_key=SecretStr(OPEN_API_KEY),
+    )
+
+    # 创建 agent
+    agent = create_skill_aware_agent(
+        model=model,
+        tools=[load_skills],
+        system_prompt=(
+            "You are a SQL query assistant that helps users "
+            "write queries against business databases."
+        ),
+    )
+
+    # 测试对话
+    config = {"configurable": {"thread_id": "test-thread-1"}}
+
+    print("=== 测试 1: 询问销售数据查询 ===")
+    result = agent.invoke(
+        {
+            "messages": [
+                HumanMessage(content="How do I find the top customers by revenue?")
+            ]
+        },
+        config=config,
+    )
+    print(result["messages"][-1].content)
+
+    print("\n=== 测试 2: 询问库存相关查询 ===")
+    result = agent.invoke(
+        {
+            "messages": [
+                HumanMessage(content="Show me products that need to be reordered")
+            ]
+        },
+        config=config,
+    )
+    print(result["messages"][-1].content)
+
+    print("\n=== 测试 3: 直接使用 load_skills 工具 ===")
+    result = agent.invoke(
+        {"messages": [HumanMessage(content="Load the sales_analytics skill for me")]},
+        config=config,
+    )
+    print(result["messages"][-1].content)
