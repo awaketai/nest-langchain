@@ -23,7 +23,7 @@ model = ChatOpenAI(
     base_url=OPEN_API_URL,
     api_key=SecretStr(OPEN_API_KEY),
     temperature=0,
-    model="gpt-3.5-turbo",
+    model="gpt-4o-mini",
 )
 
 
@@ -113,4 +113,4 @@ router_builder.add_edge("llm_call_3", END)
 # 编译
 router_workflow = router_builder.compile()
 state = router_workflow.invoke({"input": "Write me a joke about cats"})
-print(state["input"])
+print(state)
