@@ -9,15 +9,17 @@
 # 的安装说明，就可以采用该架构模式
 #
 #
+import operator
 import os
 
 from dotenv import load_dotenv
 from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
+from langgraph.types import Send
 from pydantic import BaseModel, Field, SecretStr
 from sqlalchemy.sql import desc
-from typing_extensions import List, Literal, TypedDict
+from typing_extensions import Annotated, List, Literal, TypedDict
 
 load_dotenv()
 
@@ -46,4 +48,67 @@ class Sections(BaseModel):
     sections: List[Section] = Field(description="Sections of the report")
 
 
-#
+# 为大模型配置结构化输出的模式
+plannder = model.with_structured_output(Sections)
+
+# Send API 允许动态创建工作器节点，并向其发送特定的输入数据，每个工作器都拥有独立的状态，且所有工作期的输出都会写入一个共享状态键，供 orchestrator graph 使用。
+# 这一机制能够让 orchestrator 能够获取所有工作器的输出，并将这些输出整合为最终结果，下方示例遍历每一个章节列表，同时借助 Send API 将每个部分分别发送至对应的工作器
+
+
+# Graph state
+class State(TypedDict):
+    topic: str
+    sections: list[Section]
+    completed_sections: Annotated[list, operator.add]
+    #
+    final_report: str
+
+
+# Worker state
+class WorkerState(TypedDict):
+    section: Section
+    completed_sections: Annotated[list, operator.add]
+
+
+# 节点
+def orchestrator(state: State):
+    """编排器 生成一个关于 report 的计划"""
+
+    # generate queries
+    report_sections = plannder.invoke(
+        [
+            SystemMessage(content="Generate a plan for the report"),
+            HumanMessage(content="Here is the report topic: {}".format(state["topic"])),
+        ]
+    )
+
+    return {"sections": report_sections.sections}
+
+
+def llm_call(state: WorkerState):
+    """工作节点书写关于 report 的内容"""
+    # generate section
+    section = model.invoke(
+        [
+            SystemMessage(
+                content="Write a report section following the provided name and description.Include no preamble for each section. Use markdown formatting."
+            ),
+            HumanMessage(
+                content=f"Here is the section name: {state['section'].name} and description: {state['section'].description}"
+            ),
+        ]
+    )
+    # 将结果写入 completed section
+    return {"completed_sections": [section.content]}
+
+
+def synthesizer(state: State):
+    """合成所有 report"""
+    completed_sections = state["completed_sections"]
+    # 将转换为字符串，作为最终结果
+    completed_report_sections = "\n\n---\n\n".join(completed_sections)
+    return {"final_report": completed_report_sections}
+
+
+def assign_workers(state: State):
+    """给每个计划的 section 分配工作节点"""
