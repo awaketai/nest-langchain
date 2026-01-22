@@ -112,3 +112,29 @@ def synthesizer(state: State):
 
 def assign_workers(state: State):
     """给每个计划的 section 分配工作节点"""
+    # 通过 Send() API并行启动各个章节的协作任务
+    return [Send("llm_call", {"section": s}) for s in state["sections"]]
+
+
+# 构建工作流
+orchestrator_worker_builder = StateGraph(State)
+# 添加节点
+orchestrator_worker_builder.add_node("orchestrator", orchestrator)
+orchestrator_worker_builder.add_node("llm_call", llm_call)
+orchestrator_worker_builder.add_node("synthesizer", synthesizer)
+
+# 添加边界
+orchestrator_worker_builder.add_edge(START, "orchestrator")
+orchestrator_worker_builder.add_conditional_edges(
+    "orchestrator", assign_workers, ["llm_call"]
+)
+
+orchestrator_worker_builder.add_edge("llm_call", "synthesizer")
+orchestrator_worker_builder.add_edge("synthesizer", END)
+
+# 编译
+orchestrator_worker = orchestrator_worker_builder.compile()
+
+state = orchestrator_worker.invoke({"topic": "Create a report on LLM scaling laws"})
+
+print(state)
