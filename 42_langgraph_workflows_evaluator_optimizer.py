@@ -5,6 +5,8 @@
 #
 import operator
 import os
+from pickletools import optimize
+from turtle import st
 
 from dotenv import load_dotenv
 from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage, ToolMessage
@@ -14,6 +16,7 @@ from langgraph.types import Send
 from pydantic import BaseModel, Field, SecretStr
 from sqlalchemy.sql import desc
 from typing_extensions import Annotated, List, Literal, TypedDict
+from urllib3.util.ssl_ import PROTOCOL_SSLv23
 
 load_dotenv()
 
@@ -60,4 +63,40 @@ def llm_call_generator(state: State):
     else:
         msg = model.invoke(f"Write a joke about {state['topic']}")
 
-    return {"joke": msg}
+    return {"joke": msg.content}
+
+
+#
+def llm_call_evaluator(state: State):
+    """LLM evaluates the joke"""
+    grade = evaluator.invoke(f"Grade the joke: {state['joke']}")
+    return {"funny_or_not": grade.grade, "feedback": grade.feedback}
+
+
+def route_joke(state: State):
+    """根据评估器的反馈，决定是返回笑话生成器还是结束流程"""
+    if state["funny_or_not"] == "funny":
+        return "Accepted"
+    elif state["funny_or_not"] == "not funny":
+        return "Rejected + Feedback"
+
+
+optimizer_builder = StateGraph(State)
+
+# 添加节点
+optimizer_builder.add_node("llm_call_generator", llm_call_generator)
+optimizer_builder.add_node("llm_call_evaluator", llm_call_evaluator)
+
+# 添加边界
+optimizer_builder.add_edge(START, "llm_call_generator")
+optimizer_builder.add_edge("llm_call_generator", "llm_call_evaluator")
+optimizer_builder.add_conditional_edges(
+    "llm_call_evaluator",
+    route_joke,
+    {"Accepted": END, "Rejected + Feedback": "llm_call_generator"},
+)
+optimizer_workflow = optimizer_builder.compile()
+
+state = optimizer_workflow.invoke({"topic": "programming"})
+
+print(state)
